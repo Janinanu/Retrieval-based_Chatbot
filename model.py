@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+
+     
+     #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Fri Dec 29 23:28:20 2017
@@ -8,13 +10,11 @@ Created on Fri Dec 29 23:28:20 2017
 
 import torch
 import torch.utils.data
-import torch.autograd as autograd
 import torch.nn as nn
 from torch.nn import init
-import torch.nn.functional as F
-import torch.optim as optim
 import torch.nn.utils.rnn 
-import preprocess
+import torch.autograd as autograd
+from vocab_and_dicts import id_to_vec
 #import data
 #from torch.nn.utils.rnn import pad_sequence
 
@@ -37,42 +37,48 @@ import preprocess
 
 class Encoder(nn.Module):
 
-    def __init__(self, input_size, hidden_size, vocab_size, num_layers = 1, dropout = 0, 
-                 bidirectional = False): 
-        super(Encoder, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.vocab_size = vocab_size
-        self.num_layers = num_layers
+    def __init__(self, 
+                 input_size, 
+                 hidden_size, 
+                 vocab_size, 
+                 num_layers = 1, 
+                 num_directions = 1, 
+                 dropout = 0, 
+                 bidirectional = False,
+                 rnn_type = 'lstm'): 
         
-        self.num_directions = 1
+                 super(Encoder, self).__init__()
+                 
+                 self.input_size = input_size
+                 self.hidden_size = hidden_size
+                 self.vocab_size = vocab_size
+                 self.num_layers = 1
+                 self.num_directions = 1
+                 self.dropout = 0,
+                 self.bidirectional = False
+#        
+                 self.embedding = nn.Embedding(vocab_size, input_size, sparse = False, padding_idx = 0)
+                 self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, dropout = dropout, bidirectional=False)
         
-        self.embedding = nn.Embedding(vocab_size, input_size, spare = False,
-                                      padding_idx = 0)
-        self.lstm = nn.LSTM(input_size, self.hidden_size, num_layers = num_layers, batch_first=True,
-                                   dropout = dropout, bidirectional=False, )
-        
-        self.init_weights()
-        self.init_embedding()
+                 self.init_weights()
 
     def init_weights(self):
         init.orthogonal(self.lstm.weight_ih_l0)
         init.uniform(self.lstm.weight_hh_l0, a=-0.01, b=0.01)
-    
-    def init_embedding(self):
-             
-        embedding_weights = torch.FloatTensor(self.vocab_size, self.input_size)
-        #init.uniform(embedding_weights, a = -0.25, b= 0.25)
-        
-        word_to_id = preprocess.make_word_to_id('my_vocab.txt') 
-        id_to_vec, embedding_dim = preprocess.make_id_to_vec('glove.6B.100d.txt', word_to_id)
+         
+        embedding_weights = torch.FloatTensor(self.vocab_size, 100)
+        init.uniform(embedding_weights, a = -0.25, b= 0.25)
         
         for id, vec in id_to_vec.items():
-            embedding_weights[id] = vec 
+            embedding_weights[id] = vec
         
-        del self.embedding.weight
         self.embedding.weight.data.copy_(embedding_weights)
-        
+
+            
+    def forward(self, inputs):
+        embeddings = self.embedding(inputs)
+        outputs, hiddens = self.lstm(embeddings)
+
 #%%
         
 class DualEncoder(nn.Module):
@@ -91,8 +97,6 @@ class DualEncoder(nn.Module):
          
          self.M = nn.Parameter(M, requires_grad = True)
 
-#%%
-
     def forward(self, contexts, responses):
         #output (seq_len, batch, hidden_size * num_directions): 
         #tensor containing the output features (h_t) from the last layer 
@@ -108,9 +112,6 @@ class DualEncoder(nn.Module):
         
         dual_hidden_size = self.encoder.hidden_size * self.encoder.num_directions
         
-
-#%%
-        
         scores_list = []
         
         for e in range(len(context_hn[0])): #context_hn = context_hn[0] #over all examples
@@ -120,8 +121,21 @@ class DualEncoder(nn.Module):
             
             response_h = response_out[-1][e].view(dual_hidden_size,1)
             #gives vectors of hidden_size for each example
+            
+            
+            dot = torch.mm((context_h, self.M), response_h)#gives 1x1 vector
+         
+            score = nn.Sigmoid(dot)
+            
+            scores_list.append(score)
+            
+        y_preds = torch.stack(scores_list)
+        
+        return y_preds #to be used in training to compare with label
+     
+     
 #%%
-                
+        
 #        dense_bilinear = nn.Bilinear(dual_hidden_size, dual_hidden_size, 1)
 #        context_summary = context_hn #context.shape = batchsize x dual_hidden_size
 #        response_summary = response_hn #response.shape = batchsize x dual_hidden_size
@@ -132,22 +146,6 @@ class DualEncoder(nn.Module):
 #        dense_sigmoid = nn.Sigmoid() #leave out if BCELossWithLogits() ?
 #        sigmoid_input = bilinear_output # batch_size x 1
 #        scores = dense_sigmoid(sigmoid_input) # batch_size x 1
-            
-            
-           # dot = torch.mm(context_h, self.M), response_h))#gives 1x1 vector
-         
-            scalar = dot[0]
-            
-            prob = torch.sigmoid(scalar)
-            
-            scores.append(prob)
-            
-        scores = torch.stack(scores_list)
-        
-        return scores #to be used in training to compare with label
-     
-     
-
      
      
      
@@ -170,6 +168,9 @@ class DualEncoder(nn.Module):
      
      
      
+     
+     
+        
      
      
         
