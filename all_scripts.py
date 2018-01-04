@@ -133,7 +133,7 @@ def make_matrices():
     
 #%%MODEL
 
-dtype = torch.cuda.FloatTensor
+#dtype = torch.cuda.FloatTensor
     
 class Encoder(nn.Module):
 
@@ -264,8 +264,8 @@ loss_func.cuda()
 #loss_func = torch.nn.BCEWithLogitsLoss() #input: bilinear_output (batch_size x 1)
 
 learning_rate = 0.001
-epochs = 10000
-batch_size = 50
+epochs = 100
+#batch_size = 50
 
 optimizer = optim.Adam(dual_encoder.parameters(),
                        lr = learning_rate)
