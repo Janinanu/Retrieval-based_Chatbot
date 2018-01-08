@@ -20,12 +20,7 @@ import torch.nn.utils.rnn
 import torch.optim as optim
 
 
-# make batches
-# go through examples in batches
-# split example into context, response, label
-# turn each example's context and response into id tensor
-
-#%% CREATE VOCABULARY
+#%% 
 def create_vocab(csvfile):
     vocab = []
     
@@ -113,7 +108,7 @@ def create_id_to_vec(csvfile, glovefile):
     
     return id_to_vec, vec_length
 
-#%% make batches 
+#%% 
 
 def load_batch(csvfile, batch_size, epoch):
    
