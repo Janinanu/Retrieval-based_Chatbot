@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -17,14 +19,18 @@ import torch.nn.utils.rnn
 import torch.optim as optim
 
 #%%
-def create_vocab(csvfile):
+
+def create_dataframe(csvfile):
+    dataframe = pd.read_csv(csvfile)
+    return dataframe
+
+
+def create_vocab(dataframe):
     vocab = []
     
     word_freq = {}
     
-    infile = csv.DictReader(open(csvfile))
-    
-    for row in infile:
+    for index, row in dataframe.iterrows():
         #returns dict: {context: "...", "response": "...", label: "."}
         
         context_cell = row["Context"]
@@ -49,7 +55,6 @@ def create_vocab(csvfile):
     
     word_freq_sorted = sorted(word_freq.items(), key=lambda item: item[1], reverse=True)
     vocab = [pair[0] for pair in word_freq_sorted]
-    vocab = ["<PAD>"] + vocab
     
 #    outfile = open('my_vocab.txt', 'w')  
 #
@@ -61,10 +66,8 @@ def create_vocab(csvfile):
 
 #%%
     
-def create_word_to_id(csvfile):
-    
-    vocab = create_vocab(csvfile)
-        
+def create_word_to_id(vocab):
+            
     enumerate_list = [(id, word) for id, word in enumerate(vocab)]
         
     word_to_id = {pair[1]: pair[0] for pair in enumerate_list}
@@ -72,8 +75,7 @@ def create_word_to_id(csvfile):
     return word_to_id
 #%%
 
-def create_id_to_vec(csvfile, glovefile): 
-    word_to_id = create_word_to_id(csvfile)
+def create_id_to_vec(word_to_id, glovefile): 
     
     lines = open(glovefile, 'r').readlines()
     
@@ -88,97 +90,44 @@ def create_id_to_vec(csvfile, glovefile):
         if word in word_to_id:
             id_to_vec[word_to_id[word]] = torch.FloatTensor(torch.from_numpy(vector))
  
-        for word in word_to_id:
+        for word, id in word_to_id.items(): #!!!
+            
             if word_to_id[word] not in id_to_vec:
                 v = np.zeros(*vector.shape, dtype='float32')
-                v[:] = np.random.randn(*v.shape)
-                #v = np.random.randn(*vector.shape).astype('float32') #32
+                v[:] = np.random.randn(*v.shape)*0.01
                 id_to_vec[word_to_id[word]] = torch.FloatTensor(torch.from_numpy(v))
-     
-    vec = np.zeros(*vector.shape, dtype='float32')
-
-    id_to_vec[0] = torch.FloatTensor(torch.from_numpy(vec))
-        
-    vec_length = id_to_vec[1].shape[0]
     
-    return id_to_vec, vec_length
+        
+    embedding_dim = id_to_vec[0].shape[0]
+    
+    return id_to_vec, embedding_dim
 
-#%%  
-
-def load_batch(csvfile, batch_size, epoch):
-   
-    rows = pd.read_csv(csvfile)
-       
-    batch = rows[batch_size*epoch:batch_size*(epoch+1)]
-      
-    return batch
 
 #%%
 
-def load_ids_and_labels(csvfile, batch_size, epoch):
+def load_ids_and_labels(dataframe, word_to_id):
+   
+    rows_shuffled = dataframe.reindex(np.random.permutation(dataframe.index))
     
-    word_to_id = create_word_to_id(csvfile)
-
-    batch = load_batch(csvfile, batch_size, epoch)
-
     context_id_list = []
     response_id_list = []
-     
-    batch_context = batch['Context']
-    batch_response = batch['Utterance']
-    batch_label = batch['Label'] #int
 
-    for cell in batch_context:
+    context_column = rows_shuffled['Context']
+    response_column = rows_shuffled['Utterance']
+    label_column = rows_shuffled['Label'] #int
+    
+    for cell in context_column:
         context_ids = [word_to_id[word] for word in cell.split()]
         context_id_list.append(context_ids)
     
-    for cell in batch_response:
+    for cell in response_column:
         response_ids = [word_to_id[word] for word in cell.split()]
         response_id_list.append(response_ids)
-        
-    return batch, context_id_list, response_id_list, batch_label
-
-
-#%% 
     
-def make_tensors(csvfile, batch_size, epoch):
+    label_array = np.array(label_column).astype(np.float32)
+   
+    return context_id_list, response_id_list, label_array
     
-    batch, context_id_list, response_id_list, batch_label = load_ids_and_labels(csvfile, batch_size, epoch)
-
-    max_len_context = max(len(c) for c in context_id_list)
-    max_len_response = max(len(r) for r in response_id_list)
-    max_len = max(max_len_context, max_len_response)
-    
-        
-    for list in context_id_list:
-        if (len(list) < max_len):
-            list += [0] * (max_len - len(list))
-      
-    context_batch_tensor = torch.LongTensor(context_id_list)
-    
-    for list in response_id_list:
-        if (len(list) < max_len):
-           list += [0] * (max_len - len(list))
-    
-    response_batch_tensor = torch.LongTensor(response_id_list)
-    
-    len_batch = len(batch)
-    label_array = np.array(batch_label)
-    np.reshape(label_array, (len_batch, 1))
-    label_float = label_array.astype('float32')
-    label_batch_tensor = torch.FloatTensor(label_float).view(len_batch, 1)
-    
-    return context_batch_tensor, response_batch_tensor, label_batch_tensor
-
-#%%
-    
-def get_emb_dim(glovefile):
-    lines = open(glovefile, 'r').readlines()        
-    vector = np.array(lines[0].split()[1:], dtype='float32')
-    embedding_dim = len(vector)
-    
-    return embedding_dim
-
 
 #%% MODEL
     
@@ -204,32 +153,32 @@ class Encoder(nn.Module):
              self.dropout = 0,
              self.bidirectional = False
 #        
-             self.embedding = nn.Embedding(vocab_size, input_size, sparse = False, padding_idx = 0)
-             self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=False, dropout = dropout, bidirectional=False).cuda()
+             self.embedding = nn.Embedding(self.vocab_size, self.input_size, sparse = False)
+             self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=False, dropout = dropout, bidirectional=False)
     
              self.init_weights()
              
     def init_weights(self):
-        init.orthogonal(self.lstm.weight_ih_l0)
-        init.uniform(self.lstm.weight_hh_l0, a=-0.01, b=0.01)
-         
-        embedding_weights = np.random.randn(self.vocab_size, self.input_size)
+        init.uniform(self.lstm.weight_ih_l0)
+        init.uniform(self.lstm.weight_hh_l0)
+        self.lstm.weight_ih_l0.requires_grad = True
+        self.lstm.weight_hh_l0.requires_grad = True
         
-        id_to_vec, emb_dim = create_id_to_vec('/data/train_shuffled_onethousand.csv','/data/glove.6B.100d.txt')
-    
+        embedding_weights = torch.FloatTensor(self.vocab_size, self.input_size)
+        #init.uniform(embedding_weights, a = -0.25, b= 0.25)
+            
         for id, vec in id_to_vec.items():
             embedding_weights[id] = vec
-    
-        embedding_weights_tensor = torch.FloatTensor(embedding_weights).cuda()
-    
-        self.embedding.weight.data.copy_(embedding_weights_tensor)
-    
-    
+        
+        self.embedding.weight = nn.Parameter(embedding_weights, requires_grad = True)
+            
     def forward(self, inputs):
         embeddings = self.embedding(inputs)
         outputs, hiddens = self.lstm(embeddings)
+
         return outputs, hiddens
-    
+
+
 #%%
         
 class DualEncoder(nn.Module):
@@ -237,103 +186,119 @@ class DualEncoder(nn.Module):
     def __init__(self, encoder):
          super(DualEncoder, self).__init__()
          self.encoder = encoder
-         self.number_of_layers = 1
+         self.hidden_size = self.encoder.hidden_size
         
-         M = torch.FloatTensor(self.encoder.hidden_size, self.encoder.hidden_size).cuda()
          
-         init.normal(M)
-         
-         self.M = nn.Parameter(M, requires_grad = True)
-
-    def forward(self, context_batch, response_batch):
+    def forward(self, context_tensor, response_tensor):
+        #Outputs: output, (h_n, c_n)
         
-        context_out, context_hn = self.encoder(context_batch)
+        #output (seq_len, batch, hidden_size * num_directions): 
+        #tensor containing the output features (h_t) from the last layer 
+        #of the RNN, for each t. 
         
-        response_out, response_hn = self.encoder(response_batch)
+        #h_n (num_layers * num_directions, batch, hidden_size): 
+        #tensor containing the hidden state for t=seq_len
                 
-        scores_list = []
+        context_out, context_hc_tuple = self.encoder.forward(context_tensor)
+           
+        response_out, response_hc_tuple = self.encoder.forward(response_tensor)
         
-        len_batch = context_out.shape[0]
         
-        for example in range(len_batch):
+        context_h = context_hc_tuple[0]
         
-            context_h = context_out[example][-1].view(1, self.encoder.hidden_size)
-            response_h = response_out[example][-1].view(self.encoder.hidden_size, 1)
+        response_h = response_hc_tuple[0]
         
-            dot_var = torch.mm(torch.mm(context_h, self.M), response_h)[0][0]#gives 1x1 variable floattensor
-
-            dot_tensor = dot_var.data #gives 1x1 floattensor
-            dot_tensor.cuda()
         
-            score_tensor = torch.sigmoid(dot_tensor)
-            scores_list.append(score_tensor)
-            
-        y_preds_tensor = torch.stack(scores_list, 0).cuda()  
-        y_preds = autograd.Variable(y_preds_tensor, requires_grad = True).cuda()
+        context_h_layer = context_h[-1] #batch x hidden_size
+        
+        response_h_layer = response_h[-1] #batch x hidden_size
+        
+        
+        context = context_h_layer.view(-1, 1, self.hidden_size) #batch x 1 x hidden_size
+        
+        response = response_h_layer.view(-1, self.hidden_size, 1) #batch x hidden_size x 1
+        
+         
+        M = torch.FloatTensor(context.shape[0], self.hidden_size, self.hidden_size) # batch x hidden x hidden     
+        
+        init.xavier_normal(M)
+         
+        self.M = nn.Parameter(M, requires_grad = True)
+        
+        score_M = torch.bmm(torch.bmm(context, self.M), response).view(-1, 1) # batch x 1
+        
+        return score_M
+        
     
-        return y_preds 
-    
-    
+              
 #%% TRAINING
 
-torch.backends.cudnn.enabled = False
-#%%
-vocab = create_vocab('/data/train_shuffled_onethousand.csv')
+#torch.backends.cudnn.enabled = False
+
+dataframe = create_dataframe('train_shuffled_onethousand.csv')
+vocab = create_vocab(dataframe)
+word_to_id = create_word_to_id(vocab)
+id_to_vec, emb_dim = create_id_to_vec(word_to_id, 'glove.6B.100d.txt')
 vocab_len = len(vocab)
-emb_dim = get_emb_dim('/data/glove.6B.100d.txt')
-#%%
+
 
 encoder_model = Encoder(
         input_size = emb_dim,
-        hidden_size = 300,
+        hidden_size = 200,
         vocab_size = vocab_len)
 
-encoder_model.cuda()
-#%%
 dual_encoder = DualEncoder(encoder_model)
 
-dual_encoder.cuda()
-#%%
-loss_func = torch.nn.BCELoss()
-
-loss_func.cuda()
-#%%
-
-learning_rate = 0.001
-
-optimizer = optim.Adam(dual_encoder.parameters(),
-                       lr = learning_rate)
 
 #%%
+#loss_func = torch.nn.functional.binary_cross_entropy_with_logits() #input: bilinear_output (batch_size x 1)
+optimizer = torch.optim.SGD(dual_encoder.parameters(), lr = 0.0001)
 
-epochs = 50
-batch_size = 20
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
 
-for epoch in range(epochs):
-        
-    context_batch_tensor, response_batch_tensor, label_batch_tensor = make_tensors('/data/train_shuffled_onethousand.csv', batch_size, epoch)
- 
-    context_batch = autograd.Variable(context_batch_tensor, requires_grad=False).cuda()
-   
-    response_batch = autograd.Variable(response_batch_tensor, requires_grad=False).cuda()
-     
-    y_preds = dual_encoder(context_batch.detach(), response_batch.detach())
-                
-    y = autograd.Variable(label_batch_tensor, requires_grad = False).cuda()
-        
-    loss = loss_func(y_preds, y)
-        
-    print("Epoch: ", epoch, ", Loss: ", loss.data[0])
-        
-    dual_encoder.zero_grad()
-    loss.backward()
+
+
+epochs = 100
+for epoch in range(epochs): 
     
-    optimizer.step()
+    context_id_list, response_id_list, label_array = load_ids_and_labels(dataframe, word_to_id)
+    
+    loss_acc = 0
 
-#%%
+    optimizer.zero_grad()
+    
+    for i in range(len(label_array)):
+        context = autograd.Variable(torch.LongTensor(context_id_list[i]).view(len(context_id_list[i]),1), requires_grad = False)
+        
+        response = autograd.Variable(torch.LongTensor(response_id_list[i]).view(len(response_id_list[i]), 1), requires_grad = False)
+        
+        label = autograd.Variable(torch.FloatTensor(torch.from_numpy(np.array(label_array[i]).reshape(1,1))), requires_grad = False)
+        
+        score = dual_encoder(context, response)
+
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(score, label) #loss for 1 example
+        
+        loss_acc += loss.data[0]
+        
+        loss.backward()
+
+        scheduler.step()
+        
+        #torch.nn.utils.clip_grad_norm(dual_encoder.parameters(), 10)
+        
+    print("Epoch: ", epoch, ", Loss: ", (loss_acc/len(label_array)))
+   
+    #for name, param in dual_encoder.named_parameters():
+       #if param.grad is None:
+           #print(name, param.shape)
+        
+        #if ((epoch == 0) or (epoch == 1)) and (name == "encoder.embedding.weight"):
+          # print(name, param.grad) 
+    
 
 torch.save(dual_encoder.state_dict(), 'SAVED_MODEL.pt')
     
 #%%
+
 
 
