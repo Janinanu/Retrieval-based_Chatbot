@@ -1,5 +1,3 @@
-
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -8,6 +6,7 @@ Created on Fri Dec 29 20:18:46 2017
 @author: janinanu
 """
 
+# vocab, word to id, id to vec, padding
 import csv
 import torch.nn as nn
 import numpy as np
@@ -25,13 +24,13 @@ def create_dataframe(csvfile):
     return dataframe
 
 
+#%% CREATE VOCABULARY
 def create_vocab(dataframe):
     vocab = []
     
     word_freq = {}
     
     for index, row in dataframe.iterrows():
-        #returns dict: {context: "...", "response": "...", label: "."}
         
         context_cell = row["Context"]
         response_cell = row["Utterance"]
@@ -96,7 +95,6 @@ def create_id_to_vec(word_to_id, glovefile):
                 v = np.zeros(*vector.shape, dtype='float32')
                 v[:] = np.random.randn(*v.shape)*0.01
                 id_to_vec[word_to_id[word]] = torch.FloatTensor(torch.from_numpy(v))
-    
         
     embedding_dim = id_to_vec[0].shape[0]
     
@@ -106,16 +104,17 @@ def create_id_to_vec(word_to_id, glovefile):
 #%%
 
 def load_ids_and_labels(dataframe, word_to_id):
-   
+    
     rows_shuffled = dataframe.reindex(np.random.permutation(dataframe.index))
     
     context_id_list = []
     response_id_list = []
-
+    
     context_column = rows_shuffled['Context']
     response_column = rows_shuffled['Utterance']
     label_column = rows_shuffled['Label'] #int
-    
+
+
     for cell in context_column:
         context_ids = [word_to_id[word] for word in cell.split()]
         context_id_list.append(context_ids)
@@ -125,9 +124,9 @@ def load_ids_and_labels(dataframe, word_to_id):
         response_id_list.append(response_ids)
     
     label_array = np.array(label_column).astype(np.float32)
-   
+  
     return context_id_list, response_id_list, label_array
-    
+
 
 #%% MODEL
     
@@ -159,19 +158,18 @@ class Encoder(nn.Module):
              self.init_weights()
              
     def init_weights(self):
-        init.uniform(self.lstm.weight_ih_l0)
-        init.uniform(self.lstm.weight_hh_l0)
+     
         self.lstm.weight_ih_l0.requires_grad = True
         self.lstm.weight_hh_l0.requires_grad = True
         
         embedding_weights = torch.FloatTensor(self.vocab_size, self.input_size)
-        #init.uniform(embedding_weights, a = -0.25, b= 0.25)
             
         for id, vec in id_to_vec.items():
             embedding_weights[id] = vec
         
         self.embedding.weight = nn.Parameter(embedding_weights, requires_grad = True)
-            
+        
+      
     def forward(self, inputs):
         embeddings = self.embedding(inputs)
         outputs, hiddens = self.lstm(embeddings)
@@ -179,14 +177,20 @@ class Encoder(nn.Module):
         return outputs, hiddens
 
 
+
+
 #%%
         
 class DualEncoder(nn.Module):
      
     def __init__(self, encoder):
-         super(DualEncoder, self).__init__()
-         self.encoder = encoder
-         self.hidden_size = self.encoder.hidden_size
+        super(DualEncoder, self).__init__()
+        self.encoder = encoder
+        self.hidden_size = self.encoder.hidden_size
+        M = torch.FloatTensor(self.hidden_size, self.hidden_size)     
+        init.xavier_normal(M)#?
+        self.M = nn.Parameter(M, requires_grad = True)
+
         
          
     def forward(self, context_tensor, response_tensor):
@@ -198,9 +202,10 @@ class DualEncoder(nn.Module):
         
         #h_n (num_layers * num_directions, batch, hidden_size): 
         #tensor containing the hidden state for t=seq_len
-                
+        
+        
         context_out, context_hc_tuple = self.encoder.forward(context_tensor)
-           
+        
         response_out, response_hc_tuple = self.encoder.forward(response_tensor)
         
         
@@ -209,39 +214,34 @@ class DualEncoder(nn.Module):
         response_h = response_hc_tuple[0]
         
         
-        context_h_layer = context_h[-1] #batch x hidden_size
+        context_h_layer = context_h[0] #batch x hidden_size
         
-        response_h_layer = response_h[-1] #batch x hidden_size
+        response_h_layer = response_h[0] #batch x hidden_size
         
         
-        context = context_h_layer.view(-1, 1, self.hidden_size) #batch x 1 x hidden_size
+        context = context_h_layer.mm(self.M) #batch x hidden_size
+        
+        context = context.view(-1, 1, self.hidden_size) #batch x 1 x hidden_size
         
         response = response_h_layer.view(-1, self.hidden_size, 1) #batch x hidden_size x 1
         
-         
-        M = torch.FloatTensor(context.shape[0], self.hidden_size, self.hidden_size) # batch x hidden x hidden     
-        
-        init.xavier_normal(M)
-         
-        self.M = nn.Parameter(M, requires_grad = True)
-        
-        score_M = torch.bmm(torch.bmm(context, self.M), response).view(-1, 1) # batch x 1
-        
-        return score_M
-        
+        score = torch.bmm(context, response).view(-1, 1) # batch x 1 x 1 --> batch x 1
+          
+        return score
     
-              
+    
 #%% TRAINING
 
 #torch.backends.cudnn.enabled = False
-
-dataframe = create_dataframe('train_shuffled_onethousand.csv')
+#%%
+dataframe = create_dataframe('train_shuffled_hundred.csv')
 vocab = create_vocab(dataframe)
 word_to_id = create_word_to_id(vocab)
 id_to_vec, emb_dim = create_id_to_vec(word_to_id, 'glove.6B.100d.txt')
 vocab_len = len(vocab)
 
 
+#%%
 encoder_model = Encoder(
         input_size = emb_dim,
         hidden_size = 200,
@@ -249,24 +249,24 @@ encoder_model = Encoder(
 
 dual_encoder = DualEncoder(encoder_model)
 
+#%%
+optimizer = torch.optim.Adam(dual_encoder.parameters(), lr = 0.0001)
 
 #%%
-#loss_func = torch.nn.functional.binary_cross_entropy_with_logits() #input: bilinear_output (batch_size x 1)
-optimizer = torch.optim.SGD(dual_encoder.parameters(), lr = 0.0001)
 
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
+#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
+
+#%%
 
 
-
-epochs = 100
+epochs = 200
+            
 for epoch in range(epochs): 
     
     context_id_list, response_id_list, label_array = load_ids_and_labels(dataframe, word_to_id)
     
     loss_acc = 0
 
-    optimizer.zero_grad()
-    
     for i in range(len(label_array)):
         context = autograd.Variable(torch.LongTensor(context_id_list[i]).view(len(context_id_list[i]),1), requires_grad = False)
         
@@ -275,30 +275,43 @@ for epoch in range(epochs):
         label = autograd.Variable(torch.FloatTensor(torch.from_numpy(np.array(label_array[i]).reshape(1,1))), requires_grad = False)
         
         score = dual_encoder(context, response)
+#        
+#        if (score.requires_grad == True):
+#            print("requires_grad")
+#        print(score.type)
+#        print(score)
 
         loss = torch.nn.functional.binary_cross_entropy_with_logits(score, label) #loss for 1 example
         
         loss_acc += loss.data[0]
         
+        
         loss.backward()
 
-        scheduler.step()
+        optimizer.step()
+       
         
-        #torch.nn.utils.clip_grad_norm(dual_encoder.parameters(), 10)
+        optimizer.zero_grad()
+        
         
     print("Epoch: ", epoch, ", Loss: ", (loss_acc/len(label_array)))
+    
    
-    #for name, param in dual_encoder.named_parameters():
+    
+#    for name, param in dual_encoder.named_parameters():
+#          if (param.requires_grad == True):
+#              print(name, param.shape)
+
        #if param.grad is None:
            #print(name, param.shape)
         
-        #if ((epoch == 0) or (epoch == 1)) and (name == "encoder.embedding.weight"):
-          # print(name, param.grad) 
-    
+#%%
 
 torch.save(dual_encoder.state_dict(), 'SAVED_MODEL.pt')
     
 #%%
+
+
 
 
 
