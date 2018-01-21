@@ -1,5 +1,11 @@
 # UDC_Chatbot
 
+training_1.py: without batch processing
+training_2.py: with batch processing
+validation.py: 1 in 10 Recall@k for k = 1, 2, 5 (for training_1.py)
+
+--------------------------------------------------------------------------------------------------------------------------------
+
 In this work-in-progress project, I am building a retrieval-based dialogue system, that means a chatbot that picks the best response to a conversational input from a pool of candidate responses. 
 
 I am using Python 3.5 and PyTorch 0.3.0 to implement the LSTM model, taking inspiration from the following two papers and a blog tutorial:
