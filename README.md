@@ -1,7 +1,9 @@
 # UDC_Chatbot
 
 training_1.py: without batch processing
+
 training_2.py: with batch processing
+
 validation.py: 1 in 10 Recall@k for k = 1, 2, 5 (for training_1.py)
 
 --------------------------------------------------------------------------------------------------------------------------------
