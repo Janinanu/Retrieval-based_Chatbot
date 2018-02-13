@@ -2,15 +2,15 @@
 
 # Retrieval-based Dialogue System on the Ubuntu Dialogue Corpus | PyTorch LSTM 
 
-1) Idea
+**1) Idea**
 
-One of the top goals in artificial intelligence research is to enable a computer to hold natural, coherent conversations with humans - ideally in such a way that the computer tricks the human into thinking that it is talking to another human being. As of now, none of these so-called chatbots can pass the Turing test yet and research is still very far from developing a generative open-domain dialog system, meaning one that can freely compose sentences to hold human-style conversations about all kinds of topics. Despite that, more and more companies make use of chatbots to create value e.g. in their technical customer support or as personal assistants. Often, these are closed-domain retrieval-based chatbots: using some kind of heuristic, they pick an appropriate response from a fixed repository of responses predefined by humans within a narrowly specified range of topics.,, Taking inspiration from such retrieval-based chatbots, the goal in this project was to build a model that, at best, is able to retrieve the most appropriate response to a conversational input from a whole pool of candidate responses.
+One of the top goals in artificial intelligence research is to enable a computer to hold natural, coherent conversations with humans - ideally in such a way that the computer tricks the human into thinking that it is talking to another human being. As of now, none of these so-called chatbots can pass the Turing test yet and research is still very far from developing a generative open-domain dialog system, meaning one that can freely compose sentences to hold human-style conversations about all kinds of topics. Despite that, more and more companies make use of chatbots to create value e.g. in their technical customer support or as personal assistants. Often, these are closed-domain retrieval-based chatbots: using some kind of heuristic, they pick an appropriate response from a fixed repository of responses predefined by humans within a narrowly specified range of topics. **Taking inspiration from such retrieval-based chatbots, the goal in this project was to build a model that, at best, is able to retrieve the most appropriate response to a conversational input from a whole pool of candidate responses.**
 
-2) Corpus
+**2) Corpus**
 
 In the paper “The Ubuntu Dialogue Corpus: A Large Dataset for Research in Unstructured Multi-Turn Dialogue Systems”, the hypothesis is made that the lack of progress in recent years in building sophisticated dialogue systems is due to the lack of sufficiently large datasets. The authors of the paper thus aimed at compiling a new large corpus to exploit the opportunities of deep learning for dialog systems and came up with the so-called Ubuntu Dialog Corpus (UDC). It is a collection of chat logs from Ubuntu-internal chat rooms, in which users of the operating system seek and give Ubuntu-related technical advice. Containing around 930.000 dialogs, it is the largest freely available corpus with the following favourable characteristics: it is targeting a task-specific domain, namely technical support, with conversations being two-way oriented and going back and forth between the two users at least three times. As such, it is much more representative of natural human dialogs than, for example, common microblogging datasets like from Twitter or Weibo, in which the exchanges lack a natural conversational structure and length.
 
-3) Data & task 
+**3) Data & task** 
 
 The data comes fully tokenized, stemmed and lemmatized and entities like names, locations, organizations, URLs, and system paths were replaced with special tokens.
 
@@ -21,7 +21,8 @@ However, I did not strictly stick with the original approach of the train/valida
 
 ![alt text](https://github.com/Janinanu/UDC_Chatbot/blob/master/src/Subsample%20data.png "Subsample data overview")
 
-4) Model architecture
+**4) Model architecture**
+
 Python 3.5 and PyTorch 0.3.0 was used to implement a neural network that can be described as a dual encoder model. The main component is an encoder model composed of three layers:
 - Embedding layer: initialized with pre-trained GloVe vectors for those words available, otherwise randomly initialized (from standard normal distribution), fine-tuned during training. Dimension: vocabulary size x embedding dimension.
 - LSTM layer: unidirectional, single-layer LSTM with input-to-hidden weights initialized from a uniform distribution and hidden-to-hidden weights with orthogonal initialization, following the original paper’s recommendations. At each time step, one word vector of the input utterance is fed into the LSTM and the hidden state is updated. For this classification task, we are only interested in  the last hidden state of each input sequence, which can be interpreted as a numerical summary of the input utterance. 
@@ -35,7 +36,7 @@ To obtain the dual encoder model, one instance of the encoder model is applied t
 
 A high similarity will result in a high dot product and a sigmoid value that goes towards 1. The model was trained by minimizing the binary cross entropy loss.
 
-5) Training & validation results 
+**5) Training & validation results**
 
 ![alt text](https://github.com/Janinanu/UDC_Chatbot/blob/master/src/Loss.png "Training and validation loss")
 
@@ -47,7 +48,8 @@ The best validation accuracy was achieved with the hyperparameter configuration 
 
 ![alt text](https://github.com/Janinanu/UDC_Chatbot/blob/master/src/Hyperparameters.png "Hyperparameter configuration")
 
-6) Test data & test results
+**6) Test data & test results**
+
 Testing was done with two different approaches.
 - I used a subsample of my split_testing.csv which has the same data structure as the data used for training and validation (context - response - label). The appropriate testing metric used was accuracy - it simply measures what is the chance that the label 1 or 0 is classified correctly.
 - I used a subsample of the original test.csv which has a different structure than the training and validation data:
@@ -59,7 +61,7 @@ Given the above validation results, the test results are expectedly weak. The mo
 
 ![alt text](https://github.com/Janinanu/UDC_Chatbot/blob/master/src/Test%20results.png "Test results")
 
-7) Key findings
+**7) Key findings**
 
 As explained before, the most distinct characteristic of the UDC is its size, which makes it so well-suited to accelerate progress in dialog system research by making use of deep learning. In their paper “Improved Deep Learning Baselines for Ubuntu Corpus Dialogs”, the authors set the benchmark performance for the dual encoder model architecture on the UDC dataset. To achieve good recall rates, they trained the model on at least 100.000 up to the full 1,000,000 training examples available. This sheds some light on why training on 10,000 examples leads the model into an overfitting situation that cannot be regularized with the methods applied in this project. It implies that a maximum amount of training data is crucial for good performance in dialog systems and that only increasing the amount of training data might finally show a promising regularizing effect on the LSTM model developed in this project.
 
