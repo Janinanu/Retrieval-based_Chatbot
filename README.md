@@ -65,7 +65,7 @@ As explained before, the most distinct characteristic of the UDC is its size, wh
 
 Taking a closer look at the benchmark test results, it is interesting that even with the maximum of training data used, the recall for k = 1 is at 63,8% and does not reach its peak yet. In other words: even with 1,000,000 training examples, in around one third of all cases the user of a chatbot, be it a customer seeking technical advice, will not receive the most appropriate response to his question.This illustrates one of the biggest shortcomings of chatbots as of now - their need for vast amounts of data. In practice, only few companies can provide those amounts of data when they first start putting chatbots in dialog with their customers. That’s why many chatbots are first released with mediocre performance, gathering data to learn over time, yet frustrating and driving away many users.
 The authors of the benchmark paper therefore propose three ways of enhancing performance of dialog systems: 
-improved pre-processing approaches
-sophisticated model ensembles (combinations of multiple model architectures)
-extended models with memory (e.g. providing external sources of information from user manuals) 
+- improved pre-processing approaches
+- sophisticated model ensembles (combinations of multiple model architectures)
+- extended models with memory (e.g. providing external sources of information from user manuals) 
 
