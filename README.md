@@ -1,4 +1,4 @@
-# Chatbot | Retrieval-based Dialog System on the Ubuntu Dialogue Corpus | LSTM | PyTorch
+# Chatbot | Retrieval-based Dialog System on the Ubuntu Dialog Corpus | LSTM | PyTorch
 
 <img src="https://github.com/Janinanu/UDC_Chatbot/blob/master/src/drib_blink_bot.gif" width="160" height="120" />
 
